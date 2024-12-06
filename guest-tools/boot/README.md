@@ -1,63 +1,79 @@
-# TD Boot methods 
+# TD Boot Methods
 
-This folder contains scripts and instructions to boot a TD using the [direct
-boot](https://qemu-project.gitlab.io/qemu/system/linuxboot.html) method.
+There are different methods to boot a TD, which we classify in two categories:
 
-The direct boot method is an alternative to the boot method that is being used by `tdvirsh`
-to run TDs.
-We will refer to the `tdvirsh` boot method as the `indirect boot` method.
-With the `indirect boot` method, the boot chain involves following components:
+- `indirect boot`
+- `direct boot`
+
+In the following sections, we describe these boot methods in more detail.
+
+Importantly, the used boot method defines the boot chain structure, i.e., which software pieces are loaded and in what order.
+This is important for remote attestation, since it impacts measurements present in a TD Quote.
+In more detail, each component in the boot chain generates a set of entries of the event log journal and measurements of this journal are part of each TD Quote.
+The more components we have in the boot chain, the more event logs we will have and the harder is the verification of the correctness of the measurement values.
+
+
+## Indirect Boot
+
+With the `indirect boot` method, the boot chain involves the following components:
+
 - TDVF (virtual UEFI firmware)
 - SHIM
 - Grub
 - Kernel + Initrd
 
-The `direct boot` will skip `SHIM` and `Grub` in the boot chain by providing the `Kernel`
-and `Initrd` directly to `qemu`. Per consequence, the boot chain involves these components:
+This boot method is used by the scripts described in the [project's main README](https://github.com/canonical/tdx/tree/noble-24.04?tab=readme-ov-file#boot-td).
+
+
+## Direct Boot
+
+With the [`direct boot`](https://qemu-project.gitlab.io/qemu/system/linuxboot.html) method, the boot chain involves the following components:
 - TDVF (virtual UEFI firmware)
 - Kernel + Initrd
 
-The boot chain structure is important for remote attestation since it impacts the size of
-the event log journal. Indeed, each component in the boot chain generates a set of entries of the event
-log journal. The more components we have in the boot chain, the more event logs we will have and the harder
-is the verification of the correctness of the measurement values.
+Compared to `direct boot`, `SHIM` and `Grub` are not in the boot chain.
 
-For `direct boot`, we would like to investigate 2 ways of passing `kernel` and `initrd` to `qemu`:
-- Separately using `-kernel` and `-initrd` arguments
-- Bundled together as part of an [Unified Kernel Image](https://uapi-group.org/specifications/specs/unified_kernel_image/)
+For `direct boot`, we investigate 2 variants of passing `kernel` and `initrd` to QEMU:
+
+- `Separate Direct Boot`: Provide kernel and initrd separately.
+- `Bundled Direct Boot`: Provide [Unified Kernel Image (UKI)](https://uapi-group.org/specifications/specs/unified_kernel_image/), which bundles kernel and initrd.
+
+Both variants have a dedicated subsection.
+
+Note: `Bundled Direct Boot` using an UKI leads to better UEFI Secure Boot support, a better support for TPM measurements and Confidential Computing, and a more robust boot process.
+
 
 ### Prerequisites
 
-We need to generate different files used by direct boot scripts:
+To later perform direct boot with the two direct boot variants, we need to do the following:
 
-1. TD Guest Image
+1. Create a TD guest image, which is used as final rootfs to boot into, following the [Create TD Image](../../README.md#create-td-image) section.
 
-The boot scripts need a guest image as the final rootfs to boot into.
+    NOTE: The credentials necessary for login into the TD guest can also be found in this section.
 
-To generate this guest image, please refer to the section [Create TD Image](../../README.md#create-td-image).
+2. Create kernel, initrd and UKI (using the `qcow2` file from step 1):
 
-NOTE: The credentials necessary for login into the TD guest can also be found in this section.
+    ```
+    $ cd guest-tools/image
+    $ ./create-td-uki.sh tdx-guest-ubuntu-24.04-generic.qcow2
+    ```
 
-2. Kernel, initrd and UKI
- 
-NOTE : the following instructions are for `24.04` guest but please replace it by `24.10` if
-you want to work with `oracular` TD guest.
+    This script will generate 3 files:
+    - `vmlinuz-24.04` : the kernel of the guest image.
+    - `initrd.img-24.04` : the initrd of the guest image.
+    - `uki.efi-24.04` : the Unified Kernel Image that bundles together the kernel and the initrd.
 
-```
-$ cd guest-tools/image
-$ ./create-td-uki.sh tdx-guest-ubuntu-24.04-generic.qcow2
-```
+NOTE: the provided instructions are for `24.04` guest.
+    Please replace `24.04` by `24.10` if you want to work with `oracular` TD guest.
 
-This script will generate 3 files:
-- `vmlinuz-24.04` : the kernel of the guest image
-- `initrd.img-24.04` : the initrd of the guest image
-- `uki.efi-24.04` : the Unified Kernel Image that bundles together the kernel and the initrd
 
-### Direct boot
+### Separated Direct Boot
+
+Boot the TD with this direct boot method:
 
 ```
 $ cd guest-tools/direct-boot
-$ ./boot_direct.sh 24.04
+$ ./boot_direct_separated.sh 24.04
 ```
 
 Once you are in the guest console, you can see the event log journal by:
@@ -65,6 +81,8 @@ Once you are in the guest console, you can see the event log journal by:
 ```
 $ tdeventlog
 ```
+
+Example output:
 
 ```
 root@tdx-guest:~# tdeventlog
@@ -124,14 +142,14 @@ rtmr_2 : 82abbec34b50b6784bd9edc785fdbfd2e49d05acbb0f1ae58c011f057b64bb6532cac5b
 rtmr_3 : 000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 ```
 
-### Direct boot with UKI
 
-Another way to do direct boot is to use the [Unified Kernel Image](https://uapi-group.org/specifications/specs/unified_kernel_image/).
-UKI leads to better UEFI Secure Boot support, better supporting TPM measurements and confidential computing, and a more robust boot process.
+### Bundled Direct Boot
+
+Boot the TD with this direct boot method:
 
 ```
 $ cd guest-tools/direct-boot
-$ ./boot_uki.sh 24.04
+$ ./boot_direct_bundled.sh 24.04
 ```
 
-You can use `tdeventlog` program to compare the event log journal to the one generated by the `direct boot` method in the previous section.
+Once you are in the guest console, you can see the event log journal as explained in the previous section.
